@@ -1,1 +1,2 @@
 Stable 1.0.0 payload uploaded. SHA256 (xz): d3999edd5280ded8c45fb7c381c80078ca6e50dbc6dd13543be0f76cd7221b28
+Retry source publish without GitHub workflow mutation.
