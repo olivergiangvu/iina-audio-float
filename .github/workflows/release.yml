@@ -1,0 +1,49 @@
+name: Release IINA plugin
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate release package
+        run: python3 tests/test_release.py
+      - name: Verify JavaScript syntax
+        run: node --check main.js
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build artifact
+        run: python3 tests/test_release.py
+      - name: Verify tag matches version
+        shell: bash
+        run: |
+          VERSION=$(python3 -c 'import json; print(json.load(open("Info.json"))["version"])')
+          test "$GITHUB_REF_NAME" = "v$VERSION"
+      - name: Publish GitHub release and installable package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/Audio-Float-for-IINA-${GITHUB_REF_NAME}.iinaplgz" \
+            --title "Audio Float for IINA $GITHUB_REF_NAME" \
+            --notes-file CHANGELOG.md \
+            --verify-tag
