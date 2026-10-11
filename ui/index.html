@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Audio Float for IINA</title>
+<style>
+  :root { color-scheme:dark; font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; }
+  html,body { margin:0; width:100%;height:100%;background:transparent!important;overflow:hidden; }
+  #anchor {position:absolute;width:34px;height:34px; z-index:900; opacity:1;
+    transition:opacity .18s ease,visibility .18s ease; }
+  /* An invisible button remains hit-testable for hover-to-wake.
+     Native OSC mouse-motion events are not exposed to plugins. */
+  #anchor.hidden {opacity:0;}
+  #audio-button {width:34px;height:34px;padding:7px;box-sizing:border-box;
+    border:1px solid rgba(255,255,255,.18);border-radius:9px;
+    background:rgba(50,47,52,.72);color:#f5f5f7;
+    -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    box-shadow:0 3px 14px rgba(0,0,0,.23);}
+  #audio-button:hover,#audio-button[aria-expanded="true"] {background:rgba(102,98,106,.88);}
+  #audio-button svg {width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.85;
+    stroke-linejoin:round;stroke-linecap:round;}
+  /* IINA uses per-element hit testing for data-clickable. */
+  #audio-button *,button * {pointer-events:none!important;}
+  #popover {position:absolute;right:0;bottom:42px;width:min(340px,calc(100vw - 24px));
+    max-height:min(550px,75vh);overflow-y:auto;box-sizing:border-box;display:none;
+    border:1px solid rgba(255,255,255,.20);border-radius:12px;padding:7px;
+    color:#f5f5f7;background:rgba(38,36,43,.96);
+    -webkit-backdrop-filter:blur(25px);backdrop-filter:blur(25px);
+    box-shadow:0 12px 40px rgba(0,0,0,.45);}
+  #popover.open {display:block;}
+  .heading {color:#aaaab2;font-size:11px;font-weight:600;padding:8px 10px 9px;letter-spacing:.5px;}
+  .track {box-sizing:border-box;display:flex;align-items:center;gap:8px;width:100%;padding:10px 9px;
+    border:0;border-radius:8px;background:transparent;color:#fff;cursor:pointer;text-align:left;}
+  .track:hover,.mini:hover,.nudge:hover {background:rgba(255,255,255,.15);}
+  .content{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px;}
+  .name{font:500 13px -apple-system,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .meta{font:11px -apple-system,sans-serif;color:#b5b5bd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .check{color:#7bc5ff;font-size:16px;}.empty{padding:10px;font-size:12px;color:#c1c1c8;line-height:1.5;}
+  .footer{padding:7px 6px 3px;margin-top:4px;border-top:1px solid rgba(255,255,255,.09);display:flex;gap:8px;align-items:center;justify-content:space-between;}
+  .mini{background:transparent;color:#dcdce0;border:0;border-radius:7px;padding:7px 9px;cursor:pointer;font-size:12px;}
+  .tag{font-size:10px;color:#999aa4;padding-right:6px;}
+  #calibration{display:none;padding:9px 7px 6px;border-top:1px solid rgba(255,255,255,.09);}
+  #calibration.open{display:block;}
+  .row{display:flex;gap:8px;align-items:center;margin:8px 0;}
+  .row label{flex:1;font-size:12px;color:#dadade;}
+  .row output{width:56px;text-align:center;color:#b6b6c0;font-size:11px;}
+  .nudge{border:1px solid rgba(255,255,255,.11);border-radius:7px;background:rgba(255,255,255,.05);
+    color:white;font-size:15px;min-width:32px;height:28px;cursor:pointer;}
+  .hint{font-size:10px;line-height:1.45;color:#aaaab6;padding:4px 2px;}
+  .actions{display:flex;justify-content:flex-end;gap:6px;}
+  #osc-guide{display:none;position:absolute;box-sizing:border-box;border:1px dashed rgba(120,197,255,.8);
+    border-radius:13px;pointer-events:none;background:rgba(120,197,255,.065);z-index:10;}
+  #osc-guide.visible{display:block;}
+  #osc-guide::after{content:'OSC ESTIMATED';position:absolute;top:-17px;left:8px;
+    color:rgba(200,232,255,.92);font-size:9px;letter-spacing:.3px;}
+</style>
+</head>
+<body>
+<div id="osc-guide"></div>
+<div id="anchor">
+  <div id="popover" role="menu" aria-label="Audio track selector">
+    <div class="heading">AUDIO TRACKS</div>
+    <div id="switch-status" class="empty" style="display:none"></div>
+    <div id="tracks"><div class="empty">Connecting to IINA…</div></div>
+    <div class="footer">
+      <button type="button" class="mini" data-clickable id="align-toggle">Adjust position</button>
+      <span id="mode-label" class="tag">WINDOW</span>
+    </div>
+    <div id="calibration">
+      <div class="row"><label>Horizontal offset</label><button type="button" data-clickable class="nudge" data-axis="x" data-amount="-8">−</button><output id="read-x">0</output><button type="button" data-clickable class="nudge" data-axis="x" data-amount="8">+</button></div>
+      <div class="row"><label>Vertical position</label><button type="button" data-clickable class="nudge" data-axis="y" data-amount="-8">↑</button><output id="read-y">0</output><button type="button" data-clickable class="nudge" data-axis="y" data-amount="8">↓</button></div>
+      <div class="row"><label>OSC estimated width</label><button type="button" data-clickable class="nudge" data-axis="width" data-amount="-20">−</button><output id="read-width">360</output><button type="button" data-clickable class="nudge" data-axis="width" data-amount="20">+</button></div>
+      <div class="hint">Align the dotted guide with IINA's OSC. Position is saved separately for window and fullscreen, and recalculated on resize. This does not read the actual OSC bounds.</div>
+      <div class="actions"><button class="mini" type="button" data-clickable id="reset">Reset this mode</button><button class="mini" type="button" data-clickable id="done">Done</button></div>
+    </div>
+  </div>
+  <button id="audio-button" type="button" data-clickable aria-label="Choose audio track" aria-expanded="false" title="Audio tracks">
+    <!-- SF Symbols-style audio waveform. Vector-only; scales with IINA UI. -->
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M3 10.5v3M6 7.5v9M9 4.5v15M12 2.5v19M15 6.5v11M18 4.5v15M21 9.5v5"/>
+    </svg>
+  </button>
+</div>
+<script>
+(function(){
+  'use strict';
+  const $=id=>document.getElementById(id);
+  const anchor=$('anchor'),button=$('audio-button'),popup=$('popover'),list=$('tracks'),guide=$('osc-guide');
+  let cachedTracks=[], cacheReceived=false;
+  let pendingNotice=null;
+  const defaults={window:{yRatio:0.762,dx:0},fullscreen:{yRatio:0.700,dx:0},oscWidth:360,gap:12};
+  let state={layout:defaults,fullscreen:false};
+  let expanded=false,connected=false,calibrating=false,visible=true;
+  let clicks=0, switchWatchdog=null;
+  let bridgeBound=false,bridgeConfirmed=false;
+  // Only the plugin entry decides visibility. No independent DOM timer.
+  function paintVisibility(next) {
+    visible=!!next;
+    anchor.classList.toggle('hidden',!visible&&!expanded&&!calibrating);
+  }
+  const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+  function send(name,data){try{if(window.iina&&typeof window.iina.postMessage==='function'){
+    window.iina.postMessage(name,data||{});return true;
+  }}catch(e){}return false;}
+  function mode(){return state.fullscreen?'fullscreen':'window';}
+  function layout(){
+    const w=window.innerWidth,h=window.innerHeight;
+    if(!w||!h)return;
+    const cfg=state.layout||defaults,chosen=cfg[mode()]||defaults[mode()];
+    const baseWidth=Number(cfg.oscWidth)||360;
+    // Responsive estimate. IINA's floating OSC compresses when the player becomes narrow.
+    const oscW=Math.min(baseWidth,Math.max(120,w-88));
+    const gap=Number(cfg.gap)||12;
+    const x=clamp(w/2+oscW/2+gap+(Number(chosen.dx)||0),8,w-42);
+    const y=clamp(h*(Number(chosen.yRatio)||.75)-17,8,h-42);
+    anchor.style.left=x+'px';anchor.style.top=y+'px';
+    // Keep the track menu within the overlay even in tall/narrow/fullscreen windows.
+    const popW=Math.min(340, Math.max(120,w-24));
+    const left=clamp(x+34-popW,12,Math.max(12,w-12-popW));
+    popup.style.width=popW+'px';
+    popup.style.right=(x+34-popW-left)+'px';
+    popup.style.bottom='42px';popup.style.top='auto';
+    popup.style.maxHeight=Math.max(120,Math.min(550,y-54))+'px';
+    guide.style.width=oscW+'px';guide.style.height='60px';
+    guide.style.left=(w/2-oscW/2)+'px';
+    guide.style.top=(y-4)+'px';
+    $('mode-label').textContent=state.fullscreen?'FULLSCREEN':'WINDOW';
+    $('read-x').textContent=Math.round(Number(chosen.dx)||0)+'px';
+    $('read-y').textContent=Math.round((Number(chosen.yRatio)||.75)*100)+'%';
+    $('read-width').textContent=Math.round(baseWidth)+'px';
+  }
+  function showCached(){
+    if(cacheReceived){render(cachedTracks);return;}
+    list.textContent=''; const m=document.createElement('div');m.className='empty';
+    m.textContent='Loading audio tracks from IINA…';list.appendChild(m);
+  }
+  function setOpen(open){
+    expanded=!!open;popup.classList.toggle('open',expanded);
+    paintVisibility(visible);
+    button.setAttribute('aria-expanded',String(expanded));
+    if(!expanded){if(switchWatchdog){clearTimeout(switchWatchdog);switchWatchdog=null;}status('');calibrating=false;$('calibration').classList.remove('open');guide.classList.remove('visible');}
+    if(expanded){
+      showCached();
+      // Fail visibly if the bridge does not reply. Do not leave "Loading" forever.
+      if(pendingNotice)clearTimeout(pendingNotice);
+      pendingNotice=setTimeout(()=>{
+        if(expanded&&!cacheReceived){list.textContent='';const m=document.createElement('div');
+          m.className='empty';m.textContent='Bridge unavailable. Plugins → Audio Float: Choose audio track (native). Check IINA Log Viewer for WEBVIEW READY.';
+          list.appendChild(m);}
+      },1600);
+    }
+    send('af-popup',{open:expanded});if(expanded)send('af-request-tracks',{});
+  }
+  function status(text){const el=$('switch-status');el.textContent=text;el.style.display=text?'block':'none';}
+  function render(tracks){
+    connected=true;list.textContent='';
+    if(!Array.isArray(tracks)||!tracks.length){
+      const m=document.createElement('div');m.className='empty';
+      m.textContent='No audio tracks available for this video';list.appendChild(m);return;
+    }
+    for(const t of tracks){
+      const row=document.createElement('button');row.type='button';row.className='track';row.setAttribute('data-clickable','');
+      const c=document.createElement('span');c.className='content';
+      const title=document.createElement('span');title.className='name';title.textContent=t.title||('Audio '+t.id);c.appendChild(title);
+      const detail=[t.lang,t.codec,t.channels].filter(Boolean).join(' · ');
+      if(detail){const sub=document.createElement('span');sub.className='meta';sub.textContent=detail;c.appendChild(sub);}
+      row.appendChild(c);
+      if(t.selected){const check=document.createElement('span');check.className='check';check.textContent='✓';row.appendChild(check);}
+      row.addEventListener('click',e=>{
+        e.stopPropagation();
+        status('Switching audio track '+t.id+'…');
+        if(!send('af-set-track',{id:t.id})) {
+          status('IINA message bridge unavailable. Check IINA debug log for TRACK_CLICK_RECEIVED.');
+          return;
+        }
+        if(switchWatchdog)clearTimeout(switchWatchdog);
+        switchWatchdog=setTimeout(()=>{
+          status('No confirmation from IINA. Check the native Audio menu or plugin Log Viewer.');
+        },2300);
+      });
+      list.appendChild(row);
+    }
+  }
+  button.addEventListener('pointerenter',()=>{send('af-hover',{inside:true});});
+  button.addEventListener('click',e=>{e.stopPropagation();clicks++;send('af-click',{clicks});setOpen(!expanded);});
+  $('align-toggle').addEventListener('click',e=>{
+    e.stopPropagation();calibrating=!calibrating;
+    $('calibration').classList.toggle('open',calibrating);
+    guide.classList.toggle('visible',calibrating);layout();
+  });
+  document.querySelectorAll('.nudge').forEach(el=>el.addEventListener('click',e=>{
+    e.stopPropagation();const axis=el.dataset.axis;const amount=Number(el.dataset.amount);
+    const delta=axis==='y'?amount/Math.max(1,window.innerHeight):amount;
+    // Instant local feedback, then persist in the main-entry plugin script.
+    const cfg=state.layout,chosen=cfg[mode()];
+    if(axis==='y')chosen.yRatio=clamp(chosen.yRatio+delta,.12,.95);
+    else if(axis==='x')chosen.dx=clamp(chosen.dx+delta,-400,400);
+    else if(axis==='width')cfg.oscWidth=clamp(cfg.oscWidth+delta,220,650);
+    layout();send('af-adjust',{axis,delta});
+  }));
+  $('reset').addEventListener('click',e=>{
+    e.stopPropagation();state.layout[mode()]=Object.assign({},defaults[mode()]);
+    layout();send('af-reset',{all:false});
+  });
+  $('done').addEventListener('click',e=>{
+    e.stopPropagation();calibrating=false;$('calibration').classList.remove('open');guide.classList.remove('visible');
+  });
+  anchor.addEventListener('mouseenter',()=>send('af-hover',{inside:true}));
+  anchor.addEventListener('mouseleave',()=>send('af-hover',{inside:false}));
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&expanded){setOpen(false);e.preventDefault();}});
+  function connectBridge(){
+    const bridge=window.iina;
+    if(!bridge||typeof bridge.onMessage!=='function'||typeof bridge.postMessage!=='function')return false;
+    if(!bridgeBound){
+      bridgeBound=true;
+      bridge.onMessage('af-tracks',d=>{
+        cachedTracks=Array.isArray(d)?d:(d&&Array.isArray(d.tracks)?d.tracks:[]);
+        cacheReceived=Array.isArray(d)||(d&&!!d.ready);
+        if(cacheReceived && pendingNotice){clearTimeout(pendingNotice);pendingNotice=null;}
+        if(expanded)showCached();
+      });
+      bridge.onMessage('af-layout',d=>{
+        if(d&&d.layout){state={layout:JSON.parse(JSON.stringify(d.layout)),fullscreen:!!d.fullscreen};layout();}
+      });
+      bridge.onMessage('af-visibility',d=>{
+        paintVisibility(!!(d&&d.visible));
+      });
+      // af-hide-config intentionally ignored: main.js owns all timing.
+      bridge.onMessage('af-ack',()=>{bridgeConfirmed=true;});
+      bridge.onMessage('af-hello',()=>{
+        // Respond even if native missed the very first WebView ready event.
+        bridge.postMessage('af-ready',{ts:Date.now()});
+      });
+      bridge.onMessage('af-open',()=>setOpen(true));
+      bridge.onMessage('af-ui-track-receipt',d=>{status('Plugin RECEIVED click: audio '+String(d&&d.id)+'; waiting for mpv…');});
+      bridge.onMessage('af-switch-status',d=>{
+        if(switchWatchdog){clearTimeout(switchWatchdog);switchWatchdog=null;}
+        const statusText=d&&d.state==='ok'?'Selected audio track '+d.id+' (confirmed)':
+          d&&d.state==='pending'?'Switching to track '+d.id+'…':
+          'Audio switch failed: '+String(d&&d.detail||'Unknown error');
+        status(statusText);
+        if(d&&d.state==='pending'){
+          switchWatchdog=setTimeout(()=>{
+            status('No switch result from IINA. Check IINA debug log for TRACK_CLICK_RECEIVED.');
+          },2300);
+        }
+      });
+      bridge.onMessage('af-close',()=>{setOpen(false);status('');});
+    }
+    return true;
+  }
+  // Both directions retry their handshake: late injection / dropped first
+  // messages no longer deadlock the entire Audio selector.
+  setInterval(()=>{
+    if(connectBridge()&&!bridgeConfirmed){
+      try{window.iina.postMessage('af-ready',{ts:Date.now()});}catch(e){}
+    }
+  },300);
+  window.addEventListener('resize',layout,{passive:true});
+  if(window.visualViewport)window.visualViewport.addEventListener('resize',layout,{passive:true});
+  if(typeof ResizeObserver!=='undefined')new ResizeObserver(layout).observe(document.documentElement);
+  layout();connectBridge();send('af-ready',{});
+})();
+</script>
+</body></html>
