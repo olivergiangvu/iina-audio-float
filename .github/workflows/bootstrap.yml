@@ -39,7 +39,9 @@ jobs:
                   dest.parent.mkdir(parents=True, exist_ok=True)
                   dest.write_bytes(tf.extractfile(member).read())
           PY
-          rm -rf .bootstrap .github/workflows/bootstrap.yml
+          rm -rf .bootstrap
+          rm -f .github/workflows/release.yml
+          # Keep bootstrap workflow unchanged in this commit: GitHub Actions token lacks workflows scope.
       - name: Validate IINA package
         run: |
           python3 tests/test_release.py
