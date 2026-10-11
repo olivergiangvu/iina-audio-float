@@ -1,7 +1,7 @@
 name: Bootstrap stable source and release
 on:
   push:
-    paths: ['.bootstrap/payload.b64']
+    paths: ['.bootstrap/payload.ready']
   workflow_dispatch:
 
 permissions:
@@ -14,14 +14,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Extract verified source archive
+      - name: Extract stable source archive
         run: |
           python3 - <<'PY'
           from pathlib import Path
-          import base64, io, lzma, tarfile
+          import base64, hashlib, io, lzma, tarfile
           root = Path.cwd().resolve()
-          encoded = (root / ".bootstrap/payload.b64").read_text().strip()
-          archive = lzma.decompress(base64.b64decode(encoded, validate=True))
+          parts = sorted((root / ".bootstrap").glob("part-*.txt"))
+          if len(parts) != 5:
+              raise RuntimeError(f"Expected five archive parts, found {len(parts)}")
+          encoded = "".join(p.read_text().strip() for p in parts)
+          payload = base64.b64decode(encoded, validate=True)
+          expected = "d3999edd5280ded8c45fb7c381c80078ca6e50dbc6dd13543be0f76cd7221b28"
+          if hashlib.sha256(payload).hexdigest() != expected:
+              raise RuntimeError("Archive checksum mismatch: aborting without writing")
+          archive = lzma.decompress(payload)
           with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tf:
               for member in tf:
                   if not member.isfile():
