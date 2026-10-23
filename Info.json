@@ -1,20 +1,21 @@
 {
   "name": "Audio Float for IINA",
   "identifier": "io.local.iina.audio-float-preview",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "author": {
     "name": "Oliver Giang Vu",
     "url": "https://github.com/olivergiangvu"
   },
   "entry": "main.js",
-  "description": "Floating audio track selector with waveform icon, verified audio switching, configurable positioning, and best-effort OSC-like auto-hide.",
+  "description": "Floating audio-track selector with System/Light/Dark appearance, waveform button, and safer native overlay hit-testing.",
   "permissions": [
     "video-overlay"
   ],
   "preferenceDefaults": {
     "layout_v04": "{\"window\":{\"yRatio\":0.762,\"dx\":0},\"fullscreen\":{\"yRatio\":0.7,\"dx\":0},\"oscWidth\":360,\"gap\":12}",
-    "autoHide_v05": true
+    "autoHide_v05": true,
+    "appearance_v01": "system"
   },
   "ghRepo": "olivergiangvu/iina-audio-float",
-  "ghVersion": 1
+  "ghVersion": 4
 }

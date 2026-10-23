@@ -4,56 +4,167 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Audio Float for IINA</title>
 <style>
-  :root { color-scheme:dark; font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif; }
+  :root {
+    color-scheme:light;
+    font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;
+    --af-button-border:rgba(25,35,48,.20);
+    --af-button-bg:rgba(248,249,252,.86);
+    --af-button-fg:#262b34;
+    --af-button-hover:rgba(231,235,242,.96);
+    --af-button-shadow:rgba(18,23,33,.14);
+    --af-popover-border:rgba(37,48,62,.18);
+    --af-popover-bg:rgba(250,251,253,.97);
+    --af-popover-fg:#202630;
+    --af-popover-shadow:rgba(20,27,38,.23);
+    --af-heading:#6c7583;
+    --af-row-hover:rgba(25,66,113,.085);
+    --af-meta:#616b79;
+    --af-check:#1478c7;
+    --af-empty:#657080;
+    --af-divider:rgba(28,41,58,.12);
+    --af-mini:#424b59;
+    --af-tag:#747d89;
+    --af-label:#434c5a;
+    --af-nudge-border:rgba(28,40,57,.16);
+    --af-nudge-bg:rgba(27,46,69,.055);
+    --af-nudge-fg:#29313c;
+    --af-hint:#626b78;
+    --af-guide:rgba(11,111,190,.70);
+    --af-guide-bg:rgba(32,135,218,.07);
+    --af-guide-label:#18649f;
+    --af-segment-bg:rgba(25,41,60,.065);
+    --af-segment-active-bg:rgba(255,255,255,.97);
+    --af-segment-active-fg:#1d2732;
+    --af-segment-active-shadow:rgba(17,30,50,.16);
+  }
+  :root[data-theme="dark"] {
+    color-scheme:dark;
+    --af-button-border:rgba(255,255,255,.18);
+    --af-button-bg:rgba(50,47,52,.72);
+    --af-button-fg:#f5f5f7;
+    --af-button-hover:rgba(102,98,106,.88);
+    --af-button-shadow:rgba(0,0,0,.23);
+    --af-popover-border:rgba(255,255,255,.20);
+    --af-popover-bg:rgba(38,36,43,.96);
+    --af-popover-fg:#f5f5f7;
+    --af-popover-shadow:rgba(0,0,0,.45);
+    --af-heading:#aaaab2;
+    --af-row-hover:rgba(255,255,255,.15);
+    --af-meta:#b5b5bd;
+    --af-check:#7bc5ff;
+    --af-empty:#c1c1c8;
+    --af-divider:rgba(255,255,255,.09);
+    --af-mini:#dcdce0;
+    --af-tag:#999aa4;
+    --af-label:#dadade;
+    --af-nudge-border:rgba(255,255,255,.11);
+    --af-nudge-bg:rgba(255,255,255,.05);
+    --af-nudge-fg:#ffffff;
+    --af-hint:#aaaab6;
+    --af-guide:rgba(120,197,255,.8);
+    --af-guide-bg:rgba(120,197,255,.065);
+    --af-guide-label:rgba(200,232,255,.92);
+    --af-segment-bg:rgba(255,255,255,.08);
+    --af-segment-active-bg:rgba(110,111,126,.48);
+    --af-segment-active-fg:#ffffff;
+    --af-segment-active-shadow:rgba(0,0,0,.23);
+  }
+  /* In System mode, WKWebView follows macOS appearance automatically. */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]):not([data-theme="dark"]) {
+      color-scheme:dark;
+      --af-button-border:rgba(255,255,255,.18);
+      --af-button-bg:rgba(50,47,52,.72);
+      --af-button-fg:#f5f5f7;
+      --af-button-hover:rgba(102,98,106,.88);
+      --af-button-shadow:rgba(0,0,0,.23);
+      --af-popover-border:rgba(255,255,255,.20);
+      --af-popover-bg:rgba(38,36,43,.96);
+      --af-popover-fg:#f5f5f7;
+      --af-popover-shadow:rgba(0,0,0,.45);
+      --af-heading:#aaaab2;
+      --af-row-hover:rgba(255,255,255,.15);
+      --af-meta:#b5b5bd;
+      --af-check:#7bc5ff;
+      --af-empty:#c1c1c8;
+      --af-divider:rgba(255,255,255,.09);
+      --af-mini:#dcdce0;
+      --af-tag:#999aa4;
+      --af-label:#dadade;
+      --af-nudge-border:rgba(255,255,255,.11);
+      --af-nudge-bg:rgba(255,255,255,.05);
+      --af-nudge-fg:#ffffff;
+      --af-hint:#aaaab6;
+      --af-guide:rgba(120,197,255,.8);
+      --af-guide-bg:rgba(120,197,255,.065);
+      --af-guide-label:rgba(200,232,255,.92);
+      --af-segment-bg:rgba(255,255,255,.08);
+      --af-segment-active-bg:rgba(110,111,126,.48);
+      --af-segment-active-fg:#ffffff;
+      --af-segment-active-shadow:rgba(0,0,0,.23);
+    }
+  }
   html,body { margin:0; width:100%;height:100%;background:transparent!important;overflow:hidden; }
   #anchor {position:absolute;width:34px;height:34px; z-index:900; opacity:1;
     transition:opacity .18s ease,visibility .18s ease; }
-  /* An invisible button remains hit-testable for hover-to-wake.
-     Native OSC mouse-motion events are not exposed to plugins. */
+  /* The anchor may be visually transparent, but native hit-testing is disabled
+     while hidden to avoid IINA's nested-RunLoop PluginOverlayView.hitTest path.
+     When mpv.mouse-pos is unavailable, click/focus wakes the button. */
   #anchor.hidden {opacity:0;}
   #audio-button {width:34px;height:34px;padding:7px;box-sizing:border-box;
-    border:1px solid rgba(255,255,255,.18);border-radius:9px;
-    background:rgba(50,47,52,.72);color:#f5f5f7;
+    border:1px solid var(--af-button-border);border-radius:9px;
+    background:var(--af-button-bg);color:var(--af-button-fg);
     -webkit-backdrop-filter:blur(24px);backdrop-filter:blur(24px);
     display:flex;align-items:center;justify-content:center;cursor:pointer;
-    box-shadow:0 3px 14px rgba(0,0,0,.23);}
-  #audio-button:hover,#audio-button[aria-expanded="true"] {background:rgba(102,98,106,.88);}
+    box-shadow:0 3px 14px var(--af-button-shadow);}
+  #audio-button:hover,#audio-button[aria-expanded="true"] {background:var(--af-button-hover);}
   #audio-button svg {width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.85;
     stroke-linejoin:round;stroke-linecap:round;}
   /* IINA uses per-element hit testing for data-clickable. */
   #audio-button *,button * {pointer-events:none!important;}
   #popover {position:absolute;right:0;bottom:42px;width:min(340px,calc(100vw - 24px));
     max-height:min(550px,75vh);overflow-y:auto;box-sizing:border-box;display:none;
-    border:1px solid rgba(255,255,255,.20);border-radius:12px;padding:7px;
-    color:#f5f5f7;background:rgba(38,36,43,.96);
+    border:1px solid var(--af-popover-border);border-radius:12px;padding:7px;
+    color:var(--af-popover-fg);background:var(--af-popover-bg);
     -webkit-backdrop-filter:blur(25px);backdrop-filter:blur(25px);
-    box-shadow:0 12px 40px rgba(0,0,0,.45);}
+    box-shadow:0 12px 40px var(--af-popover-shadow);}
   #popover.open {display:block;}
-  .heading {color:#aaaab2;font-size:11px;font-weight:600;padding:8px 10px 9px;letter-spacing:.5px;}
+  .heading {color:var(--af-heading);font-size:11px;font-weight:600;padding:8px 10px 9px;letter-spacing:.5px;}
   .track {box-sizing:border-box;display:flex;align-items:center;gap:8px;width:100%;padding:10px 9px;
-    border:0;border-radius:8px;background:transparent;color:#fff;cursor:pointer;text-align:left;}
-  .track:hover,.mini:hover,.nudge:hover {background:rgba(255,255,255,.15);}
+    border:0;border-radius:8px;background:transparent;color:var(--af-popover-fg);cursor:pointer;text-align:left;}
+  .track:hover,.mini:hover,.nudge:hover {background:var(--af-row-hover);}
   .content{min-width:0;flex:1;display:flex;flex-direction:column;gap:3px;}
   .name{font:500 13px -apple-system,sans-serif;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .meta{font:11px -apple-system,sans-serif;color:#b5b5bd;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .check{color:#7bc5ff;font-size:16px;}.empty{padding:10px;font-size:12px;color:#c1c1c8;line-height:1.5;}
-  .footer{padding:7px 6px 3px;margin-top:4px;border-top:1px solid rgba(255,255,255,.09);display:flex;gap:8px;align-items:center;justify-content:space-between;}
-  .mini{background:transparent;color:#dcdce0;border:0;border-radius:7px;padding:7px 9px;cursor:pointer;font-size:12px;}
-  .tag{font-size:10px;color:#999aa4;padding-right:6px;}
-  #calibration{display:none;padding:9px 7px 6px;border-top:1px solid rgba(255,255,255,.09);}
+  .meta{font:11px -apple-system,sans-serif;color:var(--af-meta);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .check{color:var(--af-check);font-size:16px;}.empty{padding:10px;font-size:12px;color:var(--af-empty);line-height:1.5;}
+  .footer{padding:7px 6px 3px;margin-top:4px;border-top:1px solid var(--af-divider);display:flex;gap:8px;align-items:center;justify-content:space-between;}
+  .mini{background:transparent;color:var(--af-mini);border:0;border-radius:7px;padding:7px 9px;cursor:pointer;font-size:12px;}
+  .tag{font-size:10px;color:var(--af-tag);padding-right:6px;}
+  #calibration{display:none;padding:9px 7px 6px;border-top:1px solid var(--af-divider);}
   #calibration.open{display:block;}
   .row{display:flex;gap:8px;align-items:center;margin:8px 0;}
-  .row label{flex:1;font-size:12px;color:#dadade;}
-  .row output{width:56px;text-align:center;color:#b6b6c0;font-size:11px;}
-  .nudge{border:1px solid rgba(255,255,255,.11);border-radius:7px;background:rgba(255,255,255,.05);
-    color:white;font-size:15px;min-width:32px;height:28px;cursor:pointer;}
-  .hint{font-size:10px;line-height:1.45;color:#aaaab6;padding:4px 2px;}
+  .row label{flex:1;font-size:12px;color:var(--af-label);}
+  .row output{width:56px;text-align:center;color:var(--af-meta);font-size:11px;}
+  .nudge{border:1px solid var(--af-nudge-border);border-radius:7px;background:var(--af-nudge-bg);
+    color:var(--af-nudge-fg);font-size:15px;min-width:32px;height:28px;cursor:pointer;}
+  .hint{font-size:10px;line-height:1.45;color:var(--af-hint);padding:4px 2px;}
   .actions{display:flex;justify-content:flex-end;gap:6px;}
-  #osc-guide{display:none;position:absolute;box-sizing:border-box;border:1px dashed rgba(120,197,255,.8);
-    border-radius:13px;pointer-events:none;background:rgba(120,197,255,.065);z-index:10;}
+  .appearance-row{padding:7px 7px 5px;margin-top:3px;border-top:1px solid var(--af-divider);
+    display:flex;align-items:center;gap:10px;justify-content:space-between;}
+  .appearance-label{font-size:11px;color:var(--af-heading);padding-left:3px;white-space:nowrap;}
+  .appearance-segments{display:inline-flex;align-items:center;gap:2px;border-radius:8px;
+    background:var(--af-segment-bg);padding:3px;}
+  .appearance-option{appearance:none;border:0;border-radius:6px;background:transparent;
+    color:var(--af-mini);cursor:pointer;font:500 11px -apple-system,sans-serif;
+    padding:6px 9px;line-height:1;}
+  .appearance-option[aria-pressed="true"]{background:var(--af-segment-active-bg);
+    color:var(--af-segment-active-fg);box-shadow:0 1px 4px var(--af-segment-active-shadow);}
+  .appearance-option:hover:not([aria-pressed="true"]){background:var(--af-row-hover);}
+  #osc-guide{display:none;position:absolute;box-sizing:border-box;border:1px dashed var(--af-guide);
+    border-radius:13px;pointer-events:none;background:var(--af-guide-bg);z-index:10;}
   #osc-guide.visible{display:block;}
   #osc-guide::after{content:'OSC ESTIMATED';position:absolute;top:-17px;left:8px;
-    color:rgba(200,232,255,.92);font-size:9px;letter-spacing:.3px;}
+    color:var(--af-guide-label);font-size:9px;letter-spacing:.3px;}
 </style>
 </head>
 <body>
@@ -66,6 +177,14 @@
     <div class="footer">
       <button type="button" class="mini" data-clickable id="align-toggle">Adjust position</button>
       <span id="mode-label" class="tag">WINDOW</span>
+    </div>
+    <div class="appearance-row">
+      <span class="appearance-label" id="appearance-label">Appearance</span>
+      <div class="appearance-segments" role="group" aria-labelledby="appearance-label">
+        <button type="button" class="appearance-option" data-clickable data-theme-option="system" aria-pressed="true">System</button>
+        <button type="button" class="appearance-option" data-clickable data-theme-option="light" aria-pressed="false">Light</button>
+        <button type="button" class="appearance-option" data-clickable data-theme-option="dark" aria-pressed="false">Dark</button>
+      </div>
     </div>
     <div id="calibration">
       <div class="row"><label>Horizontal offset</label><button type="button" data-clickable class="nudge" data-axis="x" data-amount="-8">−</button><output id="read-x">0</output><button type="button" data-clickable class="nudge" data-axis="x" data-amount="8">+</button></div>
@@ -94,6 +213,17 @@
   let expanded=false,connected=false,calibrating=false,visible=true;
   let clicks=0, switchWatchdog=null;
   let bridgeBound=false,bridgeConfirmed=false;
+  // System mode follows the WebView's live prefers-color-scheme media query.
+  let themeMode='system';
+  function setTheme(mode) {
+    const next=['system','light','dark'].includes(mode)?mode:'system';
+    themeMode=next;
+    document.documentElement.dataset.theme=next;
+    document.querySelectorAll('[data-theme-option]').forEach(el=>{
+      el.setAttribute('aria-pressed',String(el.dataset.themeOption===next));
+    });
+  }
+  setTheme('system');
   // Only the plugin entry decides visibility. No independent DOM timer.
   function paintVisibility(next) {
     visible=!!next;
@@ -184,6 +314,13 @@
   }
   button.addEventListener('pointerenter',()=>{send('af-hover',{inside:true});});
   button.addEventListener('click',e=>{e.stopPropagation();clicks++;send('af-click',{clicks});setOpen(!expanded);});
+  document.querySelectorAll('[data-theme-option]').forEach(el=>el.addEventListener('click',e=>{
+    e.stopPropagation();
+    const next=el.dataset.themeOption;
+    if(!['system','light','dark'].includes(next))return;
+    setTheme(next);
+    send('af-theme-change',{mode:next});
+  }));
   $('align-toggle').addEventListener('click',e=>{
     e.stopPropagation();calibrating=!calibrating;
     $('calibration').classList.toggle('open',calibrating);
@@ -222,6 +359,9 @@
       });
       bridge.onMessage('af-layout',d=>{
         if(d&&d.layout){state={layout:JSON.parse(JSON.stringify(d.layout)),fullscreen:!!d.fullscreen};layout();}
+      });
+      bridge.onMessage('af-theme-config',d=>{
+        setTheme(d&&d.mode);
       });
       bridge.onMessage('af-visibility',d=>{
         paintVisibility(!!(d&&d.visible));

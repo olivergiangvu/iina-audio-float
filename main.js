@@ -1,4 +1,4 @@
-/* Audio Float v1.0.0 — stable release; waveform + best-effort OSC-like auto-hide.
+/* Audio Float v1.1.0 — reduced native hit-testing exposure for IINA hitTest crash.
  * Playback/UI logic promoted unchanged from user-validated v0.9.5.
  * IINA's native OSC visibility is not exposed by the public plugin API.
  */
@@ -6,7 +6,7 @@
   'use strict';
   const {core, mpv, event, overlay, menu, input, console: log} = iina;
   const prefs = iina.preferences;
-  const VERSION = '1.0.0';
+  const VERSION = '1.1.0';
   const IDLE_MS = 2500;
   const DEFAULTS = {window:{yRatio:0.762,dx:0},fullscreen:{yRatio:0.700,dx:0},oscWidth:360,gap:12};
   const clone = o => JSON.parse(JSON.stringify(o));
@@ -15,6 +15,7 @@
   const say = s => log.log('Audio Float '+VERSION+': '+s);
   const bad = s => log.error('Audio Float '+VERSION+': '+s);
   let layoutCfg = clone(DEFAULTS), overlayStarted=false, webReady=false;
+  let nativeClickable=null;
   let bridgeHandlersBound=false;
   let nativeMenuReady=false, nativeMenuTimer=null;
   let currentMode='window', popupOpen=false, autoHide=true, shown=null;
@@ -53,6 +54,24 @@
     } catch(e) { bad('settings write: '+e); }
   }
   restorePreferences();
+  // User appearance preference is independent from OSC visibility.
+  const THEMES=['system','light','dark'];
+  const appearanceKey='appearance_v01';
+  function validTheme(value){return THEMES.includes(value)?value:'system';}
+  let appearance='system';
+  try {appearance=validTheme(prefs && prefs.get(appearanceKey));}
+  catch(e) {bad('appearance read: '+e);}
+  function sendTheme(){send('af-theme-config',{mode:appearance});}
+  function setTheme(value){
+    const next=validTheme(value);
+    if(next!==appearance){
+      appearance=next;
+      try {if(prefs && prefs.set){prefs.set(appearanceKey,appearance);if(prefs.sync)prefs.sync();}}
+      catch(e){bad('appearance write: '+e);}
+      say('APPEARANCE '+appearance);
+    }
+    sendTheme();
+  }
   autoHide=true; // User requested auto-hide. Never inherit diagnostic v0.9.4 OFF.
 
   // Do not couple outgoing messages to the incoming ready event: that created
@@ -103,10 +122,27 @@
     if(pendingRefresh!==null) clearTimeout(pendingRefresh);
     pendingRefresh=setTimeout(()=>{pendingRefresh=null;readTracks(reason);},wait);
   }
+  // SAFETY: IINA 1.5.0 calls a nested NSRunLoop during PluginOverlayView.hitTest.
+  // When the button is visually hidden, disable native overlay hit-testing too.
+  // This avoids invisible WebView hit tests and preserves input pass-through.
+  // There is no IINA plugin event for native OSC visibility; when mpv.mouse-pos
+  // is unavailable, restoring the button requires native click/window focus.
+  function syncNativeClickable() {
+    const enabled=!!(webReady && shown===true);
+    if(!overlayStarted || nativeClickable===enabled)return;
+    try {
+      overlay.setClickable(enabled);
+      nativeClickable=enabled;
+      say('NATIVE_CLICKABLE '+(enabled?'ON':'OFF')+' source='+recentSource);
+    } catch(e) {bad('native clickability: '+e);}
+  }
   function visibility(on) {
     on=!!on;
-    if(shown===on)return;
+    if(shown===on){syncNativeClickable();return;}
     shown=on;
+    // Disable hit testing before fading the invisible button; enable only
+    // after the WebView messaging bridge has completed its handshake.
+    syncNativeClickable();
     send('af-visibility',{visible:on});
     say('VISIBILITY '+(on?'SHOW':'HIDE')+' source='+recentSource);
   }
@@ -132,8 +168,9 @@
     try {
       overlay.loadFile('ui/index.html');
       overlay.show();
-      overlay.setClickable(true);
-      say('OVERLAY_START: loadFile+show+setClickable returned');
+      // Keep the freshly loaded WebView non-interactive until AF_READY + visible.
+      syncNativeClickable();
+      say('OVERLAY_START: loadFile+show; native hit-testing gated by visibility');
     } catch(e) {overlayStarted=false;bad('overlay init: '+e);}
   }
   // Audio changes are never optimistically marked as successful. Confirm the
@@ -253,7 +290,7 @@
         try {core.window.sidebar='audio';}catch(e){bad('sidebar: '+e);}
       }));
       menu.addItem(menu.item('Audio Float: Show overlay selector',()=>{
-        initOverlay();overlay.show();overlay.setClickable(true);
+        initOverlay();overlay.show();
         popupOpen=true;wake('menu',8000);
         send('af-open',{});pushTracks();
       }));
@@ -305,7 +342,8 @@
     if(first)say('WEBVIEW READY (message bridge confirmed)');
     send('af-ack',{version:VERSION,handshake:readyMessages});
     send('af-hide-config',{enabled:autoHide,timeoutMs:IDLE_MS});
-    try {overlay.setClickable(true);}catch(e){bad('setClickable: '+e);}
+    sendTheme();
+    syncNativeClickable();
     // Always re-sync state on handshake: WebView can be recreated silently.
     emitLayout();pushTracks();
     if(first)wake('web-ready');
@@ -330,8 +368,9 @@
   });
   overlay.onMessage('af-adjust',adjust);
   overlay.onMessage('af-reset',reset);
+  overlay.onMessage('af-theme-change',d=>setTheme(d&&d.mode));
       bridgeHandlersBound=true;
-      say('BRIDGE_HANDLERS_REGISTERED count=8 AFTER_OVERLAY_LOADED');
+      say('BRIDGE_HANDLERS_REGISTERED count=9 AFTER_OVERLAY_LOADED');
       return true;
     } catch(e) {
       bad('BRIDGE_HANDLER_REGISTRATION_ERROR '+String(e));
@@ -353,10 +392,10 @@
       bad('POST_LOAD_BRIDGE_BIND_FAILED');
       return;
     }
-    try{overlay.show();overlay.setClickable(true);say('OVERLAY_SHOWN_CLICKABLE');}
+    try{overlay.show();syncNativeClickable();say('OVERLAY_SHOWN; clickability follows visibility');}
     catch(e){bad('overlay-loaded: '+e);}
     send('af-hello',{version:VERSION});
-    emitLayout();pushTracks();
+    emitLayout();pushTracks();sendTheme();
   });
   event.on('iina.file-started',()=>{initOverlay();scheduleTrackRead('file-started',140);wake('file-started');});
   event.on('iina.file-loaded',()=>{initOverlay();scheduleTrackRead('file-loaded',170);wake('file-loaded');});
@@ -429,5 +468,5 @@
   if(core.window.loaded){
     setTimeout(()=>{initOverlay();scheduleTrackRead('startup',50);},150);
   }
-  say('STARTED WAVE+AUTOHIDE; bridge lifecycle preserved; best-effort OSC sync only; timeout=2500ms');
+  say('STARTED HITTEST_GUARD_RC; native clickability OFF while hidden; click/focus-to-wake fallback; timeout=2500ms');
 })();
