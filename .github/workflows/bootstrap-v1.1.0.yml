@@ -1,0 +1,72 @@
+name: Publish Audio Float v1.1.0 Stable
+on:
+  push:
+    paths:
+      - '.bootstrap/ready.txt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and restore source archive
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, hashlib
+          root = Path.cwd()
+          parts = sorted((root / '.bootstrap').glob('part-*.txt'))
+          if len(parts) != 6:
+              raise RuntimeError(f'Expected six source chunks, got {len(parts)}')
+          payload = base64.b64decode(''.join(p.read_text().strip() for p in parts),validate=True)
+          digest = hashlib.sha256(payload).hexdigest()
+          if digest != '78debab6ab5db5c8e8d453290a6f9ee9bbef98464956559edbb9b616cabfc3ef':
+              raise RuntimeError(f'Source archive checksum mismatch: {digest}')
+          Path('/tmp/audio-float-v1.1.0.br').write_bytes(payload)
+          PY
+          node -e "const fs=require('fs'),z=require('zlib');fs.writeFileSync('/tmp/audio-float-v1.1.0.tar',z.brotliDecompressSync(fs.readFileSync('/tmp/audio-float-v1.1.0.br')))"
+          python3 - <<'PY'
+          from pathlib import Path
+          import tarfile
+          root=Path.cwd().resolve()
+          with tarfile.open('/tmp/audio-float-v1.1.0.tar','r:') as tf:
+              for member in tf:
+                  if not member.isfile(): continue
+                  dest=(root/member.name).resolve()
+                  if not dest.is_relative_to(root):
+                      raise RuntimeError('Unsafe path: '+member.name)
+                  dest.parent.mkdir(parents=True,exist_ok=True)
+                  with tf.extractfile(member) as source:
+                      dest.write_bytes(source.read())
+          PY
+          rm -rf .bootstrap
+      - name: Test stable source and create package
+        run: |
+          python3 tests/test_release.py
+          node --check main.js
+          node tests/test_hit_test_guard.js
+          node tests/test_theme_preference.js
+          python3 - <<'PY'
+          import json
+          d=json.load(open('Info.json'))
+          assert d['version']=='1.1.0'
+          assert d['ghVersion']==4
+          PY
+      - name: Commit to main and push tag
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'release: Audio Float v1.1.0 stable with System appearance'
+          git push origin HEAD:main
+          git tag -a v1.1.0 -m 'Audio Float v1.1.0 stable'
+          git push origin v1.1.0
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create v1.1.0 dist/Audio-Float-for-IINA-v1.1.0.iinaplgz --title 'Audio Float for IINA v1.1.0' --notes-file CHANGELOG.md --verify-tag --latest
