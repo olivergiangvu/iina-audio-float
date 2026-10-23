@@ -13,36 +13,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Verify and restore source archive
+      - name: Verify and restore stable source changes
         run: |
           python3 - <<'PY'
           from pathlib import Path
           import base64, hashlib
           root = Path.cwd()
           parts = sorted((root / '.bootstrap').glob('part-*.txt'))
-          if len(parts) != 6:
-              raise RuntimeError(f'Expected six source chunks, got {len(parts)}')
+          if len(parts) != 5:
+              raise RuntimeError(f'Expected five release patch chunks, got {len(parts)}')
           payload = base64.b64decode(''.join(p.read_text().strip() for p in parts),validate=True)
           digest = hashlib.sha256(payload).hexdigest()
-          if digest != '78debab6ab5db5c8e8d453290a6f9ee9bbef98464956559edbb9b616cabfc3ef':
-              raise RuntimeError(f'Source archive checksum mismatch: {digest}')
+          if digest != '1ad085fe6441e18bf69239572bb9e3da5c6c15b8cbbf8b1f2e026b2b77328b99':
+              raise RuntimeError(f'Release patch checksum mismatch: {digest}')
           Path('/tmp/audio-float-v1.1.0.br').write_bytes(payload)
           PY
-          node -e "const fs=require('fs'),z=require('zlib');fs.writeFileSync('/tmp/audio-float-v1.1.0.tar',z.brotliDecompressSync(fs.readFileSync('/tmp/audio-float-v1.1.0.br')))"
-          python3 - <<'PY'
-          from pathlib import Path
-          import tarfile
-          root=Path.cwd().resolve()
-          with tarfile.open('/tmp/audio-float-v1.1.0.tar','r:') as tf:
-              for member in tf:
-                  if not member.isfile(): continue
-                  dest=(root/member.name).resolve()
-                  if not dest.is_relative_to(root):
-                      raise RuntimeError('Unsafe path: '+member.name)
-                  dest.parent.mkdir(parents=True,exist_ok=True)
-                  with tf.extractfile(member) as source:
-                      dest.write_bytes(source.read())
-          PY
+          node -e "const fs=require('fs'),z=require('zlib');fs.writeFileSync('/tmp/audio-float-v1.1.0.patch',z.brotliDecompressSync(fs.readFileSync('/tmp/audio-float-v1.1.0.br')))"
+          git apply --check /tmp/audio-float-v1.1.0.patch
+          git apply /tmp/audio-float-v1.1.0.patch
           rm -rf .bootstrap
       - name: Test stable source and create package
         run: |
