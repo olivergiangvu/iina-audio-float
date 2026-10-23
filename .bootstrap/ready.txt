@@ -1,0 +1,1 @@
+Release v1.1.0: all five source patch chunks validated; checksum sha256 1ad085fe6441e18bf69239572bb9e3da5c6c15b8cbbf8b1f2e026b2b77328b99.
